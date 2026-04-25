@@ -5,12 +5,14 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { ROUTES } from "@/constants/routes";
 import { supabase } from "@/lib/supabase";
 import { theme } from "@/lib/theme";
+import { fetchUnseenWords } from "@/lib/words";
 import { CEFRLevel } from "@/types/word";
 
 const WORD_COUNT_OPTIONS = [3, 5, 10, 20] as const;
 
 type UserProfile = {
   target_level: CEFRLevel | null;
+  learning_language: string | null;
 };
 
 type PracticeSessionInsert = {
@@ -48,7 +50,7 @@ export default function WordCountScreen() {
 
       const { data: profileData, error: profileError } = await supabase
         .from("profiles")
-        .select("target_level")
+        .select("target_level, learning_language")
         .eq("id", user.id)
         .maybeSingle();
 
@@ -86,13 +88,37 @@ export default function WordCountScreen() {
         return;
       }
 
-      router.push({
-        pathname: ROUTES.PRACTICE,
-        params: {
-          session_id: session.id,
-          word_count: String(selectedCount)
+      try {
+        const words = await fetchUnseenWords(
+          user.id,
+          profile.target_level,
+          profile.learning_language || "en",
+          selectedCount
+        );
+
+        router.push({
+          pathname: ROUTES.PRACTICE,
+          params: {
+            session_id: session.id,
+            word_count: String(selectedCount),
+            words: JSON.stringify(words)
+          }
+        });
+      } catch (wordError) {
+        await supabase.from("practice_sessions").update({ status: "abandoned" }).eq("id", session.id);
+
+        if (wordError instanceof Error && wordError.message.toLowerCase().includes("not enough unseen words")) {
+          setErrorMessage("Not enough new words left for your selected level.");
+          return;
         }
-      });
+
+        if (wordError instanceof Error) {
+          setErrorMessage(`Failed to prepare words for practice: ${wordError.message}`);
+          return;
+        }
+
+        setErrorMessage("Failed to prepare words for practice.");
+      }
     } catch {
       setErrorMessage("Unexpected error occurred while starting your practice session.");
     } finally {
