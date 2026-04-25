@@ -54,8 +54,7 @@ export async function fetchUnseenWords(
     .in("cefr_level", allowedLevels);
 
   if (seenWordIds.length > 0) {
-    const escapedIds = seenWordIds.map((id) => `"${id}"`).join(",");
-    query = query.not("id", "in", `(${escapedIds})`);
+    query = query.not("id", "in", `(${seenWordIds.join(",")})`);
   }
 
   const { data: candidateWords, error: candidateWordsError } = await query;
